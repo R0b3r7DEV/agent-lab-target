@@ -6,6 +6,12 @@
 #
 # Cierra la Tarea A (Fase 1) donde importa: contenedor FrankenPHP real + Caddyfile +
 # timeouts + PostgreSQL, sobre runners Linux con Docker. No requiere Docker en tu portatil.
+#
+# Todas las actions van PINEADAS por SHA completo (no por tag mutable), con el tag
+# legible en un comentario al lado. Motivo (AppSec): un `@vN` puede reapuntarse por
+# quien controle el repo de la action (cf. compromiso de tj-actions/changed-files,
+# marzo 2025). Dependabot (.github/dependabot.yml) propone los bumps de forma
+# controlada. Ver README.
 name: CI
 
 on:
@@ -18,8 +24,8 @@ jobs:
     name: Tests (PHPUnit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: shivammathur/setup-php@v2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
         with:
           php-version: '8.4'
           extensions: ctype, iconv
@@ -33,7 +39,7 @@ jobs:
     name: Contenedor (Tarea A) - FrankenPHP + PostgreSQL
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Build & up (APP_ENV=prod por defecto, ver ADR 11)
         run: docker compose up -d --build

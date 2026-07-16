@@ -116,6 +116,27 @@ Ver `.env` (solo placeholders). Claves relevantes: `LAB_LEVEL`, `LAB_CONFIRM_POL
 - `docs/adr/` — un ADR por decision de arquitectura.
 - `docs/DEVLOG.md` — bitacora fechada por fase.
 
+## Higiene del repositorio y CI
+
+Coherente con el tema del lab (maneja una API key de pago; su objeto de estudio es la
+exfiltracion de secretos), la seguridad del propio repo no puede ir floja:
+
+- **Secret scanning + push protection activos** (GitHub, gratis en repos publicos): si
+  un push contiene una credencial, GitHub lo bloquea. El historial ademas se escaneo con
+  **gitleaks** (sin fugas).
+- **Actions pineadas por SHA completo**, no por tag mutable, con el tag legible en un
+  comentario. Por que: `actions/checkout@v7` es un tag **mutable** — quien controle el
+  repo de la action puede reapuntarlo. No es teorico: en el compromiso de
+  **tj-actions/changed-files** (marzo 2025) se reescribieron los tags para volcar los
+  secretos del runner en los logs de build, afectando a miles de repos; los que pineaban
+  por SHA no se vieron afectados. Riesgo real **hoy aqui**: bajo (no hay secretos en el
+  CI — los tests usan `FakeAnthropicTransport`). El argumento es de practica y coherencia:
+  un repo de portfolio sobre seguridad de agentes no puede llevar tags mutables en su CI.
+  **Dependabot** (`.github/dependabot.yml`) propone los bumps de SHA de forma controlada.
+- **`[skip ci]` solo en commits que tocan exclusivamente `docs/`.** En cuanto un commit
+  roza `src/`, `config/`, `compose.yaml`, `Dockerfile` o `.github/`, corre el CI. Sin
+  excepciones: el estado que crees tener debe ser el que el CI ha probado.
+
 ---
 
 ### English

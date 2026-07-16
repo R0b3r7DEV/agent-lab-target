@@ -194,3 +194,30 @@ FrankenPHP image and passed all checks: 5 health cases, `LAB_LEVEL=2` under real
 FrankenPHP (Mitigation 4 confirmed, no EGPCS), and the >=180s end-to-end timeout probe.
 **Task A closed -> Phase 1 closed and verified.** Minor: bump `actions/checkout@v4`->v5
 to clear the Node 20 deprecation warning. Awaiting operator go for Phase 2.
+
+---
+
+## 2026-07-16 — Higiene del repo antes de la Fase 2 (Bloques A/B/C)
+
+**ES**
+
+- **A1 confirmado:** el commit de cierre `d009479` toco **solo `docs/DEVLOG.md`** ->
+  `[skip ci]` inocuo, el HEAD anterior (verde) representa el codigo. Norma documentada
+  en el README: `[skip ci]` solo en commits docs-only; si roza `src/`, `config/`,
+  `compose.yaml`, `Dockerfile` o `.github/`, corre el CI.
+- **B — escaneo de historial:** `gitleaks 8.30.1 detect` sobre el historial completo
+  (2 commits) -> **`no leaks found`**. **secret scanning + push protection ACTIVADOS**
+  via API (confirmado: ambos `enabled`). **No hay `ANTHROPIC_API_KEY` en los secrets de
+  Actions** (`gh secret list` vacio) — los tests usan `FakeAnthropicTransport`.
+- **C — supply chain del CI:** todas las actions **pineadas por SHA** (checkout
+  `9c091bb…` v7.0.0, setup-php `f3e473d…` v2.37.2) con el tag en comentario; anadido
+  `.github/dependabot.yml` (github-actions + composer). Justificacion (tj-actions,
+  marzo 2025) y calibracion honesta del riesgo en el README. Resuelve de paso el warning
+  de Node 20 (v7 usa node24).
+
+**EN**
+
+Repo hygiene before Phase 2: A1 (closure commit was docs-only; `[skip ci]` norm
+documented). B (gitleaks full-history scan -> no leaks; secret scanning + push
+protection enabled; no `ANTHROPIC_API_KEY` in CI secrets). C (all actions pinned by SHA
++ Dependabot; supply-chain rationale in README; also clears the Node 20 warning).

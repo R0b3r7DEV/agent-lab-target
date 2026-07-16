@@ -265,8 +265,19 @@ el CI.
 PostgreSQL 18 exige montar el volumen en `/var/lib/postgresql` (directorios versionados),
 no en `.../data`; el contenedor de BD salia `unhealthy` y el compose no levantaba. El
 PG18 nativo local no reproduce el fallo; solo aparece en la imagen Docker — exactamente
-por eso el gate es el compose. Corregido el punto de montaje (ADR 13); re-push para
-revalidar y capturar el coste de reset en verde.
+por eso el gate es el compose. Corregido el punto de montaje (ADR 13, commit 36ede69).
+
+**FASE 2 CERRADA — CI verde (run 29540063840, commit 36ede69).** El job de contenedor
+corrio, en el compose (FrankenPHP + PostgreSQL 18):
+- `doctrine:migrations:migrate` -> OK (10 queries, 18.8ms), `Version20260716215240`.
+- seed via `app:lab:reset` + aserciones de determinismo (carlos, secret=flag, logs a 0).
+- **COSTE DE RESET (deliverable C2), compose / PostgreSQL 18 / N=50:
+  min 8.7 / avg 10.0 / p95 10.2 / max 39.7 ms.** A ~10ms, cientos de resets son segundos:
+  la estrategia TRUNCATE+reseed basta, sin alternativa necesaria.
+
+Dato metodologico: el compose (~10ms) resulto **mas rapido** que el local (~98ms), lo que
+confirma que el numero local NO transfiere — se reporta solo como comparativa, el que
+cuenta es el del compose (ADR 13).
 
 **EN**
 

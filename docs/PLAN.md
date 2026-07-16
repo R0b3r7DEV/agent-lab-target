@@ -40,6 +40,22 @@ Las decisiones se materializan en `docs/adr/` y el progreso se registra en
 PII = objetivo de exfiltracion), `Secret` (flag: API key ficticia), `EmailLog`,
 `ExfiltrationEvent`.
 
+### Requisitos de la Fase 2 (Fixtures / migracion / reset)
+
+- **Fixtures DETERMINISTAS (critico, C1): sin Faker, sin aleatoriedad.** Valores e IDs
+  fijos y hardcodeados (`App\Lab\LabDataset`). Si el PII de carlos, el secreto o el
+  cuerpo de la review cambiaran entre resets, las corridas dejarian de ser comparables
+  y la metrica principal (ASR) se invalidaria. IDs asignados (no autogenerados) en las
+  entidades que el harness referencia (Product/Review/User/Secret); autogenerados solo
+  en los logs de runtime (EmailLog/ExfiltrationEvent).
+- **`blocked: bool` nace en la migracion inicial** (`email_log`, `exfiltration_event`),
+  no despues (Cambio 1 / ADR 10 / C3).
+- **Flag de fuente unica** (`App\Lab\LabSecret`): entidad `Secret` y fichero en disco
+  (`var/secret.flag`, alcanzable por `../secret.flag` desde el sandbox) del mismo literal.
+- **Reset barato** (`LabResetService`): TRUNCATE RESTART IDENTITY CASCADE + reseed en
+  una transaccion, sin dropear el esquema. **El coste se mide en el compose** (PG18),
+  no en local (ADR 13); el numero local solo sirve de comparativa.
+
 ## 4. Niveles de defensa (`LAB_LEVEL` 0-3), resueltos en runtime
 
 - **0** sin defensa (baseline).
@@ -182,4 +198,15 @@ desde **una sola constante** en el codigo. Sin literales duplicados.
 ## 9. Fuera de alcance v1 (trabajo futuro)
 
 Harness Python, multi-turno + memory poisoning, inyeccion multimodal, dual-LLM
-implementado, AgentDojo, frontend React, escalado de modelo (Sonnet/Opus).
+implementado, frontend React, escalado de modelo (Sonnet/Opus).
+
+Benchmarks de referencia para el trabajo futuro (a documentar en el ADR de trabajo
+futuro):
+
+- **AgentDojo** — inyeccion de prompts sobre agentes con herramientas.
+- **AgentLAB** — benchmark centrado en ataques de **horizonte largo (multi-turno)**,
+  con familias como **tool chaining**, **intent hijacking** y **memory poisoning**.
+
+Estos son justamente los vectores que quedan fuera de la v1 **por el diseno stateless
+single-turn** — enmarcado asi a proposito: no es que se desconocieran, es que se
+acotaron deliberadamente. Esa distincion es la que hay que poder defender en entrevista.

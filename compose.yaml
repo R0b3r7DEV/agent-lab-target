@@ -27,7 +27,7 @@ services:
       ANTHROPIC_TEMPERATURE: ${ANTHROPIC_TEMPERATURE:-1.0}
       ANTHROPIC_MAX_TOKENS: ${ANTHROPIC_MAX_TOKENS:-1024}
       AGENT_MAX_ITERATIONS: ${AGENT_MAX_ITERATIONS:-8}
-      DATABASE_URL: "postgresql://app:app@database:5432/lab?serverVersion=16&charset=utf8"
+      DATABASE_URL: "postgresql://app:app@database:5432/lab?serverVersion=18&charset=utf8"
     ports:
       - "8080:80"
     depends_on:
@@ -36,7 +36,8 @@ services:
     restart: unless-stopped
 
   database:
-    image: postgres:16-alpine
+    # PostgreSQL 18 en todas partes (local/compose/CI), ver ADR 13.
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: lab
       POSTGRES_USER: app

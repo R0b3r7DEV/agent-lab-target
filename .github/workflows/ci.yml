@@ -67,6 +67,20 @@ jobs:
           test "$got_env" = "2"   # la env gana via getenv() (Mitigacion 4 bajo FrankenPHP real)
           test "$got_hdr" = "0"   # la cabecera gana sobre la env
 
+      - name: Fase 2 - migracion + seed + determinismo + coste de reset (compose, PG18)
+        run: |
+          docker compose exec -T app php bin/console doctrine:migrations:migrate --no-interaction
+          # Seed via el servicio de reset (no depende del fixtures-bundle, ausente en prod).
+          docker compose exec -T app php bin/console app:lab:reset
+          # Determinismo del dataset (C1): valores fijos esperados, sin Faker.
+          docker compose exec -T app php bin/console dbal:run-sql "SELECT email FROM app_user WHERE username='carlos'" | grep -q 'carlos@lab.local'
+          docker compose exec -T app php bin/console dbal:run-sql "SELECT value FROM lab_secret" | grep -q 'sk-LAB-FAKE-c4rl0s-pii-3xf1l-9f3a2b1c7d5e'
+          # Los logs (blocked) nacen vacios tras el reset.
+          docker compose exec -T app php bin/console dbal:run-sql "SELECT COUNT(*) FROM exfiltration_event" | grep -q '0'
+          # Coste de /api/reset (DELIVERABLE C2): en el COMPOSE, PostgreSQL 18, N=50.
+          echo "=== COSTE DE RESET (compose / PostgreSQL 18 / N=50) ==="
+          docker compose exec -T app php bin/console app:lab:reset --iterations=50
+
       - name: Timeout de request efectivo extremo-a-extremo (Caddy + PHP >= 180s)
         run: |
           # Se inyecta un .php lento TEMPORAL en el docroot (no forma parte de la app)

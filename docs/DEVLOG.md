@@ -217,7 +217,57 @@ to clear the Node 20 deprecation warning. Awaiting operator go for Phase 2.
 
 **EN**
 
-Repo hygiene before Phase 2: A1 (closure commit was docs-only; `[skip ci]` norm
+Repo hygiene before Phase 2: A1 (closure commit was docs-only; skip-ci norm
 documented). B (gitleaks full-history scan -> no leaks; secret scanning + push
 protection enabled; no `ANTHROPIC_API_KEY` in CI secrets). C (all actions pinned by SHA
 + Dependabot; supply-chain rationale in README; also clears the Node 20 warning).
+
+---
+
+## 2026-07-17 — Bloques D/E + Fase 2 (datos)
+
+**ES**
+
+**Bloque D — version de PostgreSQL alineada.** Local tenia PG 18.4 y el compose PG 16:
+dos versiones = trampa "verifico X, envio Y", critica para una medicion de rendimiento
+como el coste de reset. Decision (ADR 13): **PostgreSQL 18 en todo** (compose
+`postgres:18-alpine`, `serverVersion=18`). DBAL 4.4.3 lo soporta sin friccion.
+**El coste de reset se mide en el compose, no en local** (el local es solo bucle de
+iteracion).
+
+**Bloque E — el `on: push` que no disparo: causa DETERMINISTA encontrada.** No era
+transitorio. El cuerpo del commit `89ca587` contenia el literal del token de salto de
+CI (en la linea que documentaba la propia norma); GitHub escanea el mensaje completo
+(titulo + cuerpo) y salto el workflow. Descarte de las 4 hipotesis:
+- E1 filtros `paths:`/`branches:` -> descartada (no hay).
+- E2 token en el cuerpo -> **CAUSA** (grep lo confirma).
+- E3 push con GITHUB_TOKEN -> descartada (committer R0b3r7DEV, no bot).
+- E4 skipped vs ausente -> el run no se creo (los checks que aparecen luego son del
+  dispatch manual). Norma reforzada: nunca escribir tokens de salto de CI en mensajes
+  de commit (ni al documentarlos).
+
+**Fase 2 — datos.** Entidades Doctrine (Product, Review, User=`app_user`, Secret=
+`lab_secret`, EmailLog, ExfiltrationEvent). **Migracion inicial generada por `diff`**
+(`Version20260716215240`), con **`blocked BOOLEAN NOT NULL` en `email_log` y
+`exfiltration_event` desde el origen** (C3); `doctrine:schema:validate` -> *in sync*.
+**Dataset DETERMINISTA** (`App\Lab\LabDataset`): sin Faker, IDs y valores fijos; carlos
+con PII, review con payload de inyeccion indirecta, Secret; **flag de fuente unica**
+(`App\Lab\LabSecret`) compartido por la entidad y el fichero en disco `var/secret.flag`
+(alcanzable por `../secret.flag`). **Reset barato** (`LabResetService`): TRUNCATE RESTART
+IDENTITY CASCADE + reseed en transaccion. Determinismo verificado (dos resets ->
+carlos identico). 37 tests siguen OK.
+
+Coste de reset — **local (solo comparativa, PG18 nativo Windows, N=50): min 77 /
+avg 98 / p95 124 / max 407 ms**. El numero que cuenta (compose / PG18 / N=50) lo produce
+el CI en este commit; se anota a continuacion cuando el run cierre en verde.
+
+**EN**
+
+Block D: PostgreSQL aligned to 18 everywhere (ADR 13); reset cost measured in compose,
+not local. Block E: the missing `on: push` was deterministic — `89ca587`'s body
+contained the CI-skip token (in the line documenting the norm); GitHub scans the whole
+message. Four hypotheses ruled out with evidence; norm reinforced. Phase 2 (data):
+Doctrine entities, initial migration via diff with `blocked` from the start
+(schema:validate in sync), deterministic single-source dataset (flag shared by entity +
+on-disk file), cheap TRUNCATE+reseed reset. Local reset bench (comparison only): avg
+~98ms/50; the compose number is produced by CI in this commit.

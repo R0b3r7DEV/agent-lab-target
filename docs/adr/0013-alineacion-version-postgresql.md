@@ -39,6 +39,13 @@ en todo el proyecto.
 
 ## Consecuencias
 
+- **Gotcha de la imagen Docker de PG18 (cazado por el CI, no por el local).** La imagen
+  `postgres:18` cambio a directorios de datos versionados: el volumen debe montarse en
+  `/var/lib/postgresql` (NO en `/var/lib/postgresql/data`, como en PG16), o el contenedor
+  sale `unhealthy` y el compose no levanta (docker-library/postgres#37, PR #1259). El
+  PG18 **nativo** (scoop) no tiene este problema; solo aparece en la imagen Docker — que
+  es lo que se envia. Es la validacion literal de la regla "el gate es el compose, no el
+  local": el primer run de Fase 2 fallo aqui y se corrigio el punto de montaje.
 - Positivas: un unico Postgres en local/compose/CI; el numero de reset es representativo
   del entorno que se envia; se elimina la divergencia de versiones.
 - Negativas / asumidas: PG 18 es reciente (~sept 2025); si apareciera friccion con DBAL

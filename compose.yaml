@@ -48,7 +48,10 @@ services:
       timeout: 5s
       retries: 10
     volumes:
-      - db_data:/var/lib/postgresql/data
+      # PG18: la imagen Docker usa directorios versionados; el volumen se monta en
+      # /var/lib/postgresql (NO en .../data como en PG16), o el contenedor sale
+      # unhealthy. Ver ADR 13. (docker-library/postgres#37, PR #1259.)
+      - db_data:/var/lib/postgresql
     restart: unless-stopped
 
 volumes:

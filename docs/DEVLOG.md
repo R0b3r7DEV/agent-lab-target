@@ -259,7 +259,14 @@ carlos identico). 37 tests siguen OK.
 
 Coste de reset — **local (solo comparativa, PG18 nativo Windows, N=50): min 77 /
 avg 98 / p95 124 / max 407 ms**. El numero que cuenta (compose / PG18 / N=50) lo produce
-el CI en este commit; se anota a continuacion cuando el run cierre en verde.
+el CI.
+
+**El primer run de Fase 2 (commit 507bff0) FALLO** — y bien: la imagen Docker de
+PostgreSQL 18 exige montar el volumen en `/var/lib/postgresql` (directorios versionados),
+no en `.../data`; el contenedor de BD salia `unhealthy` y el compose no levantaba. El
+PG18 nativo local no reproduce el fallo; solo aparece en la imagen Docker — exactamente
+por eso el gate es el compose. Corregido el punto de montaje (ADR 13); re-push para
+revalidar y capturar el coste de reset en verde.
 
 **EN**
 

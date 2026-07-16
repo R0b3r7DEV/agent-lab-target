@@ -161,3 +161,36 @@ container can't be run locally or self-hosted here. Task A is moved to **CI**:
 verifies `LAB_LEVEL=2` env resolution via getenv under FrankenPHP, header precedence,
 and an end-to-end >=180s timeout probe). Closes Task A on push, no laptop load,
 repeatable. Syntax/YAML validated locally.
+
+---
+
+## 2026-07-16 — FASE 1 CERRADA (CI verde) + repo publico
+
+**ES**
+
+Repo publico: https://github.com/R0b3r7DEV/agent-lab-target (primer commit, `main`,
+sin `vendor/var/.env.local`). CI (run 29534252806) **verde en los dos jobs**:
+
+- **Tests (PHPUnit): success** (37 tests).
+- **Contenedor (Tarea A) - FrankenPHP + PostgreSQL: success.** Pasos: build de la
+  imagen FrankenPHP (primer build real, OK) -> health -> smoke de los 5 casos
+  (default 0, header 3, `99`/`abc` -> 400, POST -> 405) -> `LAB_LEVEL=2` resuelto por
+  env **bajo FrankenPHP real** (confirma la Mitigacion 4 sin EGPCS) + precedencia de
+  cabecera -> **timeout >=180s extremo a extremo** (sonda de 185s devuelta por Caddy).
+
+**Tarea A CERRADA.** Con ella, y con B/C/D/E ya entregadas, **la Fase 1 queda cerrada
+y verificada donde importa**. Verificacion en adelante: CI (el portatil no corre Docker).
+
+Nota menor (no bloqueante): warning de deprecacion de Node 20 en `actions/checkout@v4`
+(forzado a Node 24). Pendiente de bump a v5 como pulido.
+
+Pendiente: OK explicito del operador para arrancar la Fase 2 (entidades Doctrine +
+migracion + fixtures, con `blocked` y flag de fuente unica).
+
+**EN**
+
+Public repo pushed; CI green on both jobs. Container job (Task A) built the real
+FrankenPHP image and passed all checks: 5 health cases, `LAB_LEVEL=2` under real
+FrankenPHP (Mitigation 4 confirmed, no EGPCS), and the >=180s end-to-end timeout probe.
+**Task A closed -> Phase 1 closed and verified.** Minor: bump `actions/checkout@v4`->v5
+to clear the Node 20 deprecation warning. Awaiting operator go for Phase 2.

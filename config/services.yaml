@@ -19,7 +19,23 @@ services:
             # `default:` -> si LAB_LEVEL no esta en el entorno, usa lab_level_default.
             string $envLevel: '%env(default:lab_level_default:LAB_LEVEL)%'
 
+    # Toda herramienta del agente se autoconfigura con el tag que descubre el
+    # compiler pass (AgentToolPass).
+    _instanceof:
+        App\Tool\AgentToolInterface:
+            tags: ['app.agent_tool']
+
     App\:
         resource: '../src/'
         exclude:
             - '../src/Kernel.php'
+
+    # ToolRegistry recibe sus argumentos del AgentToolPass; se declaran como
+    # placeholders para que el autowiring no intente resolver el array/locator.
+    App\Tool\ToolRegistry:
+        # public: lo consumira el AgentService (Fase 4); hasta entonces, publico para
+        # que no lo elimine el contenedor y sea recuperable en los tests.
+        public: true
+        arguments:
+            $definitions: []
+            $tools: !service_locator {}

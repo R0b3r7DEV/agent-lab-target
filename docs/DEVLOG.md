@@ -305,6 +305,48 @@ the suite. F2: `LabDatasetTest` puts the flag single-source invariant (entity ==
 `LabSecret::FLAG`) and dataset determinism into the suite (39 tests). Reset bench now
 discards a warmup round. Closure commit `95636fa` confirmed green.
 
+---
+
+## 2026-07-17 — Fase 3: registro de tools + las 5 tools (Nivel 0)
+
+**ES**
+
+Disciplina de la fase: NO arreglar la vulnerabilidad intencionada. Las tools nacen
+sobre-permisivas (Nivel 0); sin validacion/sanitizacion/limites no pedidos.
+
+- **G1 — registro por atributos + compiler pass (ADR 4):** `#[AgentTool]` /
+  `#[AgentToolParam]` + `AgentToolPass` que reflexiona y **genera el JSON Schema una vez**;
+  inyecta en `ToolRegistry` el set canonico + un `ServiceLocator`. **Agnostico del nivel
+  (Cambio 4):** el pass no lee `LAB_LEVEL` ni resuelve parametros; el filtrado es runtime
+  en `schemas(DefenseLevel)`. Tests: 5 tools, forma de schema valida, set canonico
+  identico a cualquier nivel, y guard de que el pass no llama a `getParameter`.
+- **G2 — las 5 tools sobre-permisivas:** `read_file` (traversal), `send_email`,
+  `fetch_url`, `query_db` (SQL arbitrario), `delete_account`. Comportamiento Nivel 0.
+- **G3 — `SensitivePathGuard` cableado en `read_file`, resolviendo ANTES de la denylist:**
+  `realpath()` (manejando `false`) y se comprueba la ruta RESUELTA, no la cruda (una
+  denylist sobre la cadena cruda no detectaria `../../../proc/...`). Tests en las DOS
+  direcciones: (1) bloquea `/proc`, `/sys`, `.env.local` incluso via traversal y con
+  segmentos redundantes (`/./`); (2) **`../secret.flag` sigue funcionando y `/etc/passwd`
+  sigue legible** — el vector didactico intacto. Los targets absolutos (Linux) corren en
+  el CI/runner.
+- **G4 — instrumentacion desde el origen:** `fetch_url` escribe `ExfiltrationEvent` y
+  `send_email` escribe `EmailLog` SIEMPRE, `blocked=false`, registrando ANTES de cualquier
+  defensa/peticion (test de orden `['persist','request']`). El intento de
+  `delete_account`/`query_db` lo registrara el bucle del agente (tool_calls, Fase 4).
+- **Suite: 51 tests, 115 assertions** (3 saltados en Windows: read_file a `/proc`,
+  `/etc/passwd` — corren en Linux/CI).
+
+**EN**
+
+Phase 3 (Level 0, deliberately over-permissive — no defensive code added). G1:
+attribute-based tool registry + level-agnostic compiler pass (ADR 4), schema generated
+once. G2: the 5 over-permissive tools. G3: `SensitivePathGuard` wired into `read_file`,
+**resolving the path (realpath) before the denylist**; bidirectional tests — blocks
+`/proc`/`/sys`/`.env.local` (incl. traversal + redundant segments), while `../secret.flag`
+and `/etc/passwd` stay reachable (Linux tests run in CI). G4: instrumentation from birth —
+`fetch_url`/`send_email` always log (blocked=false), recorded before any defense/request.
+51 tests, 3 skipped on Windows (run in CI).
+
 **EN**
 
 Block D: PostgreSQL aligned to 18 everywhere (ADR 13); reset cost measured in compose,

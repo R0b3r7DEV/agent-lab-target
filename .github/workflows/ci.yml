@@ -1,0 +1,83 @@
+# CI del agent-lab-target.
+#
+# Asume que este directorio (agent-lab-target/) es la RAIZ del repo de GitHub.
+# Si lo anidas dentro de otro repo, mueve este fichero a <repo>/.github/workflows/
+# y anade `defaults: { run: { working-directory: AppSec/agent-lab-target } }` a cada job.
+#
+# Cierra la Tarea A (Fase 1) donde importa: contenedor FrankenPHP real + Caddyfile +
+# timeouts + PostgreSQL, sobre runners Linux con Docker. No requiere Docker en tu portatil.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: Tests (PHPUnit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: ctype, iconv
+          coverage: none
+      - name: Instalar dependencias
+        run: composer install --no-interaction --prefer-dist
+      - name: PHPUnit
+        run: php vendor/bin/phpunit
+
+  container:
+    name: Contenedor (Tarea A) - FrankenPHP + PostgreSQL
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build & up (APP_ENV=prod por defecto, ver ADR 11)
+        run: docker compose up -d --build
+
+      - name: Esperar a /api/health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/api/health >/dev/null 2>&1; then
+              echo "health OK"; curl -s http://localhost:8080/api/health; echo; exit 0
+            fi
+            sleep 2
+          done
+          echo "health no respondio a tiempo"; docker compose logs; exit 1
+
+      - name: Smoke /api/health (default 0, header 3, 99->400, abc->400, POST->405)
+        run: bash scripts/smoke-health.sh http://localhost:8080
+
+      - name: Nivel por entorno (LAB_LEVEL=2, sin EGPCS) y precedencia de cabecera
+        run: |
+          LAB_LEVEL=2 docker compose up -d --build
+          for i in $(seq 1 60); do curl -fsS http://localhost:8080/api/health >/dev/null 2>&1 && break; sleep 2; done
+          got_env="$(curl -fsS http://localhost:8080/api/health | jq -r '.level')"
+          got_hdr="$(curl -fsS -H 'X-Lab-Level: 0' http://localhost:8080/api/health | jq -r '.level')"
+          echo "LAB_LEVEL=2 -> $got_env ; X-Lab-Level:0 -> $got_hdr"
+          test "$got_env" = "2"   # la env gana via getenv() (Mitigacion 4 bajo FrankenPHP real)
+          test "$got_hdr" = "0"   # la cabecera gana sobre la env
+
+      - name: Timeout de request efectivo extremo-a-extremo (Caddy + PHP >= 180s)
+        run: |
+          # Se inyecta un .php lento TEMPORAL en el docroot (no forma parte de la app)
+          # que anula el limite de PHP y duerme 185s; si Caddy lo devuelve, el stack
+          # sostiene una request > 180s de verdad. Ademas se afirma la config declarada.
+          grep -q 'write 300s' frankenphp/Caddyfile
+          grep -q 'max_execution_time = 180' frankenphp/conf.d/app.ini
+          docker compose exec -T app sh -c 'printf "<?php\nset_time_limit(200);\nsleep(185);\necho \"slow-ok\";\n" > public/_slow_probe.php'
+          start=$(date +%s)
+          body=$(curl -fsS --max-time 240 http://localhost:8080/_slow_probe.php)
+          end=$(date +%s)
+          dur=$((end - start))
+          echo "duracion=${dur}s body=${body}"
+          docker compose exec -T app rm -f public/_slow_probe.php
+          test "$body" = "slow-ok"
+          test "$dur" -ge 180
+
+      - name: Logs del contenedor si algo falla
+        if: failure()
+        run: docker compose logs

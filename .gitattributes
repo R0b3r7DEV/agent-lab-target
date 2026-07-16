@@ -1,0 +1,4 @@
+# Normaliza finales de linea a LF en el repo (evita que un .sh con CRLF rompa el CI Linux).
+* text=auto eol=lf
+*.sh text eol=lf
+*.php text eol=lf

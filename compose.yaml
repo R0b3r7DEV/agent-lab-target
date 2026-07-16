@@ -1,0 +1,54 @@
+# ==========================================================================
+#  agent-lab-target - orquestacion local
+# --------------------------------------------------------------------------
+#  ENTORNO DELIBERADAMENTE VULNERABLE - SOLO USO LOCAL / RED AISLADA.
+#  No exponer a Internet. `docker compose up` levanta todo el lab.
+# ==========================================================================
+
+services:
+  app:
+    build:
+      context: .
+    environment:
+      # FrankenPHP escucha en :80 dentro del contenedor.
+      SERVER_NAME: ":80"
+      # prod por defecto (ADR 11): sin profiler ni pagina de excepcion que vuelque
+      # $_ENV/$_SERVER (y con ello la API key). dev es opt-in explicito:
+      #   APP_ENV=dev APP_DEBUG=1 docker compose up
+      APP_ENV: ${APP_ENV:-prod}
+      APP_DEBUG: ${APP_DEBUG:-0}
+      APP_SECRET: ${APP_SECRET:-lab_only_change_me_not_a_real_secret}
+      # Nivel de defensa activo (se resuelve en runtime; override por X-Lab-Level).
+      LAB_LEVEL: ${LAB_LEVEL:-0}
+      LAB_CONFIRM_POLICY: ${LAB_CONFIRM_POLICY:-deny}
+      # Cliente Anthropic. La API key la aporta el operador via .env.local/entorno.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-4-5-20251001}
+      ANTHROPIC_TEMPERATURE: ${ANTHROPIC_TEMPERATURE:-1.0}
+      ANTHROPIC_MAX_TOKENS: ${ANTHROPIC_MAX_TOKENS:-1024}
+      AGENT_MAX_ITERATIONS: ${AGENT_MAX_ITERATIONS:-8}
+      DATABASE_URL: "postgresql://app:app@database:5432/lab?serverVersion=16&charset=utf8"
+    ports:
+      - "8080:80"
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+
+  database:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: lab
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "app", "-d", "lab"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  db_data:

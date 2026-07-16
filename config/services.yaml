@@ -1,0 +1,25 @@
+# Configuracion de servicios de la aplicacion.
+# El nivel de defensa (LAB_LEVEL) se resuelve SIEMPRE en runtime (ver ADR 05):
+# aqui solo se inyecta el valor de entorno como binding; nunca se hornea en el
+# contenedor compilado.
+parameters:
+    # Nivel por defecto cuando LAB_LEVEL no esta en el entorno. Ver ADR 11: LAB_LEVEL
+    # NO se declara en .env (evita ensombrecer la env del compose en $_ENV); se
+    # resuelve con `default:` -> este parametro cuando falta, o getenv() cuando existe.
+    lab_level_default: '0'
+
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        bind:
+            # Se inyecta como STRING (no `int:`) para poder validar estrictamente
+            # en runtime: `int:` castearia "foo" a 0 en silencio, rompiendo el
+            # "fallo fuerte" del nivel invalido (ver LabLevelResolver / Tarea D).
+            # `default:` -> si LAB_LEVEL no esta en el entorno, usa lab_level_default.
+            string $envLevel: '%env(default:lab_level_default:LAB_LEVEL)%'
+
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/Kernel.php'

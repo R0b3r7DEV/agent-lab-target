@@ -1,0 +1,31 @@
+{
+	{$CADDY_GLOBAL_OPTIONS}
+
+	frankenphp
+
+	# Directiva de FrankenPHP: sirve PHP antes que ficheros estaticos.
+	order php_server before file_server
+
+	# Timeouts de request >= 180s: las llamadas al LLM pueden ser largas y no
+	# deben cortarse antes de tiempo (requisito de la Fase 1).
+	servers {
+		timeouts {
+			read_body 180s
+			write 300s
+			idle 300s
+		}
+	}
+}
+
+{$CADDY_EXTRA_CONFIG}
+
+# SERVER_NAME se fija a ":80" en docker compose.
+{$SERVER_NAME:localhost} {
+	root {$SERVER_ROOT:public/}
+
+	encode zstd br gzip
+
+	php_server {
+		root {$SERVER_ROOT:public/}
+	}
+}

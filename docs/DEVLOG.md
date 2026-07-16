@@ -279,6 +279,32 @@ Dato metodologico: el compose (~10ms) resulto **mas rapido** que el local (~98ms
 confirma que el numero local NO transfiere — se reporta solo como comparativa, el que
 cuenta es el del compose (ADR 13).
 
+---
+
+## 2026-07-17 — Bloque F (tests que faltaban)
+
+**ES**
+
+- **F1 (reconocido):** la Fase 2 no anadio ningun test PHPUnit (el conteo 37->37 no
+  mentia). El determinismo se comprobaba como paso de CI en bash (`dbal:run-sql | grep`),
+  fuera de la suite — que es donde tienen que estar los invariantes. Corregido.
+- **F2:** `tests/Lab/LabDatasetTest` clava en la suite:
+  1. **Invariante de fuente unica del flag (Cambio 5):** la entidad `Secret` y el
+     fichero `var/secret.flag` son IDENTICOS (y ambos == `LabSecret::FLAG`). El dia que
+     alguien toque uno solo (p. ej. en la Fase 3), el test lo caza — sin el, la
+     divergencia seria silenciosa.
+  2. **Determinismo (C1):** PII de carlos, IDs y payload de la review con valores fijos.
+  Sin BD (ObjectManager como stub). **Suite: 39 tests, 51 assertions.**
+- Benchmark de reset: descarta una vuelta de calentamiento sin cronometrar.
+- Commit de cierre de Fase 2 `95636fa`: **verde** confirmado.
+
+**EN**
+
+F1: Phase 2 added no PHPUnit tests; the determinism check lived as a CI bash step, not in
+the suite. F2: `LabDatasetTest` puts the flag single-source invariant (entity == file ==
+`LabSecret::FLAG`) and dataset determinism into the suite (39 tests). Reset bench now
+discards a warmup round. Closure commit `95636fa` confirmed green.
+
 **EN**
 
 Block D: PostgreSQL aligned to 18 everywhere (ADR 13); reset cost measured in compose,

@@ -42,6 +42,12 @@ final class LabResetCommand extends Command
     {
         $iterations = max(1, (int) $input->getOption('iterations'));
 
+        // Descarta el calentamiento: la primera reset paga JIT/cache/planificador.
+        // A ~10ms da igual, pero deja el benchmark limpio (una vuelta sin cronometrar).
+        if ($iterations > 1) {
+            $this->resetService->reset();
+        }
+
         $timesMs = [];
         for ($i = 0; $i < $iterations; ++$i) {
             $start = hrtime(true);

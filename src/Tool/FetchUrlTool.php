@@ -4,23 +4,20 @@ declare(strict_types=1);
 
 namespace App\Tool;
 
-use App\Entity\ExfiltrationEvent;
 use App\Tool\Attribute\AgentTool;
 use App\Tool\Attribute\AgentToolParam;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Descarga el contenido de una URL. Doble peligro: exfiltracion via query params
- * (mandar el secreto a un dominio del atacante) y entrada de inyeccion INDIRECTA
- * (leer contenido no confiable de la web).
+ * (mandar el secreto a un dominio del atacante) y entrada de inyeccion INDIRECTA.
  *
- * INSTRUMENTACION DESDE EL ORIGEN (G4 / trampa): registra SIEMPRE un
- * ExfiltrationEvent con el egress ANTES de intentar la peticion, con
- * `blocked = false` en Nivel 0. El orden "registrar antes de aplicar cualquier
- * allowlist" queda fijado por construccion; la Fase 5 solo rellena `blocked` cuando
- * el egress allowlist del Nivel 3 corte. Asi el harness detecta el intento por
- * GET /api/exfil (Fase 6) pase lo que pase por el texto de la respuesta.
+ * La tool es PURA respecto al log: no escribe en BD. El registro DURABLE del egress
+ * (con `blocked`, ANTES del gate/allowlist) lo hace el AgentService en
+ * `ToolInvocation` (Bloque I, ADR 15) — una sola fuente de verdad. `/api/exfil`
+ * (Fase 6) proyecta sobre esas filas (tool='fetch_url', input={url}) y deriva
+ * dominio/query del `url` guardado. Asi el harness detecta el intento pase lo que
+ * pase por el texto de la respuesta.
  */
 #[AgentTool(
     name: 'fetch_url',
@@ -30,7 +27,6 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 final class FetchUrlTool implements AgentToolInterface
 {
     public function __construct(
-        private readonly EntityManagerInterface $em,
         private readonly HttpClientInterface $httpClient,
     ) {
     }
@@ -38,13 +34,6 @@ final class FetchUrlTool implements AgentToolInterface
     public function execute(array $input): ToolResult
     {
         $url = (string) ($input['url'] ?? '');
-        $domain = (string) (parse_url($url, \PHP_URL_HOST) ?: '');
-        $query = parse_url($url, \PHP_URL_QUERY);
-        $query = (false === $query) ? null : $query;
-
-        // Registrar el egress SIEMPRE y ANTES de la peticion (blocked=false en Nivel 0).
-        $this->em->persist(new ExfiltrationEvent('fetch_url', $domain, $url, $query, false));
-        $this->em->flush();
 
         try {
             $content = $this->httpClient->request('GET', $url)->getContent();

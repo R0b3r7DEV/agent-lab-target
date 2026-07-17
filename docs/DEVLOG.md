@@ -388,6 +388,47 @@ in Phase 5. Sequencing note: Block I (durable `ToolInvocation` log with `blocked
 the gate) is coupled to Phase 4 (the AgentService is the writer, and logging must precede
 the gate), so they're implemented together next.
 
+---
+
+## 2026-07-17 — Bloque I + Fase 4 (bucle de tool use)
+
+**ES**
+
+- **Bloque I — log durable (ADR 15).** Nuevo `ToolInvocation` (tool, input, blocked,
+  result_summary, created_at): UNICA fuente de verdad de toda invocacion, escrita por el
+  `AgentService` con flush inmediato ANTES de ejecutar/gate (sobrevive a un timeout). Se
+  **eliminan `EmailLog`/`ExfiltrationEvent`**; `/api/exfil` (Fase 6) sera una proyeccion
+  sobre `ToolInvocation`. `send_email`/`fetch_url` quedan puras. Migracion
+  `Version20260717212340`. Elegi el log unico (no las dos opciones ofrecidas) porque
+  ambas duplicaban el hecho — justificado en el ADR. Clave: el escritor es el orquestador,
+  no la tool, para que una llamada bloqueada por el gate se registre igual -> por eso I
+  va acoplado a la Fase 4.
+- **Fase 4 — bucle (ADRs 3, 7).** `AnthropicClient` (POST /v1/messages a mano, sin SDK;
+  model/temperature/max_tokens explicitos; la API key nunca en logs/excepciones, con test
+  `AnthropicClientTest` que lo clava). `AgentService` (el bucle; registra ToolInvocation
+  antes del gate; `tool_calls` proyecta de ahi). `/api/chat` stateless single-turn con
+  `meta` completo (K2): `level, model, temperature, max_tokens, iterations, stop_reason,
+  max_iterations_reached, truncated, api_error` — distingue "el ataque fallo" de "no
+  concluyente". `FakeAnthropicTransport` (MockHttpClient, solo tests). 6 tests del bucle:
+  texto, tool use, encadenado, MAX_ITER, error de API, truncado. README: el harness DEBE
+  descartar las no concluyentes.
+- CI: los tests con BD corren en el contenedor con `APP_ENV=test` explicito (el env real
+  prod impedia arrancar el kernel de test). Suite local: **58 tests** (3 saltados en
+  Windows -> corren en CI).
+
+**EN**
+
+Block I (ADR 15): a single durable `ToolInvocation` log (source of truth), written by the
+`AgentService` before execution/gate (survives timeouts); `EmailLog`/`ExfiltrationEvent`
+removed, `/api/exfil` becomes a projection. Chose the single log over the two offered
+options (both duplicated the fact); the writer is the orchestrator so a gate-blocked call
+is still logged — hence I is coupled to Phase 4. Phase 4 (ADRs 3, 7): hand-written
+`AnthropicClient` (no SDK; explicit model/temperature/max_tokens; API key never in
+logs/exceptions, tested), `AgentService` loop, `/api/chat` with full `meta` (K2:
+iterations/stop_reason/max_iterations_reached/truncated/api_error), `FakeAnthropicTransport`
+(test-only), 6 loop tests. README: the harness must discard inconclusive measurements. 58
+tests locally (3 skipped on Windows, run in CI).
+
 **EN**
 
 Block D: PostgreSQL aligned to 18 everywhere (ADR 13); reset cost measured in compose,

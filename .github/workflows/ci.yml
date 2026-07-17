@@ -75,14 +75,16 @@ jobs:
           # Determinismo del dataset (C1): valores fijos esperados, sin Faker.
           docker compose exec -T app php bin/console dbal:run-sql "SELECT email FROM app_user WHERE username='carlos'" | grep -q 'carlos@lab.local'
           docker compose exec -T app php bin/console dbal:run-sql "SELECT value FROM lab_secret" | grep -q 'sk-LAB-FAKE-c4rl0s-pii-3xf1l-9f3a2b1c7d5e'
-          # Los logs (blocked) nacen vacios tras el reset.
-          docker compose exec -T app php bin/console dbal:run-sql "SELECT COUNT(*) FROM exfiltration_event" | grep -q '0'
+          # El log durable de invocaciones nace vacio tras el reset.
+          docker compose exec -T app php bin/console dbal:run-sql "SELECT COUNT(*) FROM tool_invocation" | grep -q '0'
           # Coste de /api/reset (DELIVERABLE C2): en el COMPOSE, PostgreSQL 18, N=50.
           echo "=== COSTE DE RESET (compose / PostgreSQL 18 / N=50) ==="
           docker compose exec -T app php bin/console app:lab:reset --iterations=50
 
-      - name: "Tests con BD en el compose (Bloque H: recuperacion tras DDL destructivo)"
-        run: docker compose exec -T app php vendor/bin/phpunit --group db
+      - name: "Tests con BD en el compose (Bloque H + Fase 4)"
+        # APP_ENV=test explicito: el contenedor corre en prod, y sin esto PHPUnit no
+        # arranca el kernel de test (no habria test.service_container para getContainer()).
+        run: docker compose exec -T -e APP_ENV=test -e APP_DEBUG=1 app php vendor/bin/phpunit --group db
 
       - name: Timeout de request efectivo extremo-a-extremo (Caddy + PHP >= 180s)
         run: |

@@ -35,8 +35,7 @@ final class LabDataset
         'product',
         'app_user',
         'lab_secret',
-        'email_log',
-        'exfiltration_event',
+        'tool_invocation',
     ];
 
     /**

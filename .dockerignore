@@ -6,4 +6,5 @@
 .env.*.local
 .phpunit.result.cache
 docs
-tests
+# tests/ SI va a la imagen: los tests #[Group('db')] corren dentro del contenedor
+# (`docker compose exec app php vendor/bin/phpunit --group db`) contra el compose.

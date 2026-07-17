@@ -347,6 +347,47 @@ and `/etc/passwd` stay reachable (Linux tests run in CI). G4: instrumentation fr
 `fetch_url`/`send_email` always log (blocked=false), recorded before any defense/request.
 51 tests, 3 skipped on Windows (run in CI).
 
+---
+
+## 2026-07-17 — Bloques H + J (antes de la Fase 4)
+
+**ES**
+
+- **Bloque H (critico) — reset robusto ante DDL destructivo (ADR 14).** `query_db`
+  acepta DDL, asi que un `DROP`/`ALTER` (payload o modelo "explorando") dejaba el
+  `TRUNCATE` roto y envenenaba en silencio el resto de una corrida. `LabResetService`
+  ahora: via rapida (`TRUNCATE`+reseed, el TRUNCATE es la comprobacion de deriva); y solo
+  tras dano, restauracion completa (`DROP SCHEMA public CASCADE` + recrear desde el
+  mapping + reseed). Mantiene `query_db` con DDL (vector intacto). Test
+  `LabResetRecoveryTest` (#[Group('db')]): `DROP TABLE review CASCADE` **via la tool real
+  query_db** -> reset -> lab operativo. Los tests con BD se separan por grupo: el job
+  PHPUnit corre `--exclude-group db`; el job de contenedor corre `--group db` contra el
+  compose (PG18). `dbname_suffix` a '' en test (misma BD del lab; el test la restaura).
+- **Bloque J (documentado) — requisito de la Fase 5.** El test de orden de `fetch_url`
+  (`['persist','request']`) solo clava media invariante: cuando llegue el gate del Nivel 3,
+  `['gate','persist','request']` tambien pasaria, y es justo lo que el Cambio 1 prohibe.
+  Anotado en `ToolInstrumentationTest` y aqui: en la Fase 5 la asercion **debe pasar a
+  `['persist','gate','request']`**.
+- Suite: 52 tests (3 saltados en Windows -> corren en CI).
+
+**Nota de secuenciacion:** los Bloques I (log durable `ToolInvocation` con `blocked`
+ANTES del gate) y la Fase 4 (bucle de tool use) van ACOPLADOS: el escritor del log debe
+ser el `AgentService`, y el registro debe preceder al gate (si lo escribiera la tool, una
+llamada bloqueada por el gate no se registraria -> se violaria el invariante). Por eso I
+se implementa junto con la Fase 4, como esfuerzo enfocado siguiente.
+
+**EN**
+
+Block H (critical): reset now survives destructive DDL from `query_db` (ADR 14) — fast
+path (`TRUNCATE`+reseed) and, only after damage, a full restore (`DROP SCHEMA public
+CASCADE` + recreate from mapping + reseed); keeps query_db's DDL (vector intact). Tested
+via the real `query_db` tool (`LabResetRecoveryTest`, DB group, runs in the compose). DB
+tests split by group: PHPUnit job `--exclude-group db`, container job `--group db`. Block
+J documented: the `fetch_url` order assertion must become `['persist','gate','request']`
+in Phase 5. Sequencing note: Block I (durable `ToolInvocation` log with `blocked` before
+the gate) is coupled to Phase 4 (the AgentService is the writer, and logging must precede
+the gate), so they're implemented together next.
+
 **EN**
 
 Block D: PostgreSQL aligned to 18 everywhere (ADR 13); reset cost measured in compose,

@@ -24,8 +24,11 @@ doctrine:
 when@test:
     doctrine:
         dbal:
-            # "TEST_TOKEN" is typically set by ParaTest
-            dbname_suffix: '_test%env(default::TEST_TOKEN)%'
+            # Sin sufijo _test: los tests #[Group('db')] usan la MISMA BD del lab. Es un
+            # entorno de lab, no una app con datos que proteger; el test de recuperacion
+            # (Bloque H) resetea/restaura la BD de todos modos. Evita tener que crear y
+            # migrar una `lab_test` aparte en local y en el compose/CI.
+            dbname_suffix: ''
 
 when@prod:
     doctrine:

@@ -32,8 +32,8 @@ jobs:
           coverage: none
       - name: Instalar dependencias
         run: composer install --no-interaction --prefer-dist
-      - name: PHPUnit
-        run: php vendor/bin/phpunit
+      - name: PHPUnit (sin los tests que requieren BD; esos corren en el contenedor)
+        run: php vendor/bin/phpunit --exclude-group db
 
   container:
     name: Contenedor (Tarea A) - FrankenPHP + PostgreSQL
@@ -80,6 +80,9 @@ jobs:
           # Coste de /api/reset (DELIVERABLE C2): en el COMPOSE, PostgreSQL 18, N=50.
           echo "=== COSTE DE RESET (compose / PostgreSQL 18 / N=50) ==="
           docker compose exec -T app php bin/console app:lab:reset --iterations=50
+
+      - name: "Tests con BD en el compose (Bloque H: recuperacion tras DDL destructivo)"
+        run: docker compose exec -T app php vendor/bin/phpunit --group db
 
       - name: Timeout de request efectivo extremo-a-extremo (Caddy + PHP >= 180s)
         run: |

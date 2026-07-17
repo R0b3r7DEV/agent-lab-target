@@ -75,6 +75,13 @@ final class ToolInstrumentationTest extends TestCase
         self::assertFalse($event->isBlocked());
 
         // El orden es lo critico: registrar ANTES de la peticion.
+        //
+        // BLOQUE J (requisito de la Fase 5): esta asercion solo clava la MITAD del
+        // invariante. Cuando llegue el egress allowlist del Nivel 3, la secuencia
+        // correcta sera ['persist', 'gate', 'request'] — y ['gate', 'persist', 'request']
+        // TAMBIEN pasaria este test, que es justo lo que el Cambio 1 prohibe (registrar
+        // despues del gate hace indistinguible "bloqueado" de "no intentado"). En la
+        // Fase 5 esta asercion DEBE pasar a ['persist', 'gate', 'request'].
         self::assertSame(['persist', 'request'], $calls, 'el egress debe registrarse antes de la peticion HTTP');
     }
 }

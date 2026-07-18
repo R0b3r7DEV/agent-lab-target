@@ -39,6 +39,10 @@ class ToolInvocation
     #[ORM\Column]
     private bool $blocked;
 
+    /** Que capa lo paro (Fase 5): 'confirmation', 'egress_allowlist', 'query_db_read_only'... */
+    #[ORM\Column(length: 64, nullable: true)]
+    private ?string $blockedReason = null;
+
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $resultSummary = null;
 
@@ -82,6 +86,17 @@ class ToolInvocation
     public function setBlocked(bool $blocked): void
     {
         $this->blocked = $blocked;
+    }
+
+    public function getBlockedReason(): ?string
+    {
+        return $this->blockedReason;
+    }
+
+    public function block(string $reason): void
+    {
+        $this->blocked = true;
+        $this->blockedReason = $reason;
     }
 
     public function getResultSummary(): ?string

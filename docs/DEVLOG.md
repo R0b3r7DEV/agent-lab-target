@@ -439,3 +439,55 @@ Doctrine entities, initial migration via diff with `blocked` from the start
 (schema:validate in sync), deterministic single-source dataset (flag shared by entity +
 on-disk file), cheap TRUNCATE+reseed reset. Local reset bench (comparison only): avg
 ~98ms/50; the compose number is produced by CI in this commit.
+
+---
+
+## 2026-07-18 — Fase 5: defensas conmutables (Niveles 1-3)
+
+**ES**
+
+- **`DefensePolicy`** centraliza las tres capas (ADR 05): `wrapUntrusted` (N1: envuelve
+  el output de tool como DATOS no confiables), `gate` (N2 minimo privilegio + HITL, N3
+  egress allowlist de `fetch_url`) y `filterOutput` (N3 DLP del flag). En **Nivel 0
+  todos los ganchos son la identidad**; lo clava `BaselinePristineTest` (N1) con
+  comparacion **estricta** (system prompt canonico via `SystemPromptFactory::CANONICAL`
+  + `query_db` con descripcion canonica, no la recortada).
+- **Orden `persist -> gate -> execute`** (Cambio 1 / N4): el `gate` va ENTRE registrar el
+  `ToolInvocation` y ejecutar, para que una llamada bloqueada quede grabada
+  (`blocked=true` + nueva columna `blocked_reason`, migracion `Version20260718024210`) y
+  NO se confunda con "nunca intentada". `AgentInvocationOrderTest` pasa a asertar
+  `['persist','gate','execute']` con un espia de `DefensePolicy`.
+- **N2 (metadatos):** `meta.dlp_redacted` (bool) y `tool_calls[].blocked_reason`
+  (proyeccion del log durable, no contabilidad paralela).
+- **HITL como auto-policy** (`LAB_CONFIRM_POLICY` deny|allow, ADR 06): el lab es no
+  interactivo; `deny` (defecto) bloquea las acciones sensibles, `allow` las
+  auto-confirma. Mismo patron `default:` que `LAB_LEVEL` — **corregido**: la variable NO
+  se declara en `.env` (si no, el `deny` del `.env` ensombreceria en `$_ENV` un `allow`
+  del compose; es el bug del ADR 11). Se resuelve via `lab_confirm_policy_default`.
+- **N5 docs:** `docs/DEFENSES.md` con el "que ataca / que NO cubre" por capa. Hallazgo
+  pedagogico **esperado** (no bug): el DLP por coincidencia literal es evadible
+  (base64/invertido/deletreado); se contrasta con el log de `fetch_url`, que registra el
+  intento **independientemente** del formato -> detectar en el borde de egress (con log)
+  es mas robusto que censurar contenido.
+- Verificacion: suite local **80 tests** (73 sin BD, 3 saltados = grupo db que corre
+  aparte; 7 del grupo db con `APP_ENV=test`), 0 fallos. `schema:validate` en sync.
+  El numero de contenedor lo produce el CI en el commit de cierre.
+
+**EN**
+
+Phase 5 — switchable defenses (Levels 1-3). `DefensePolicy` centralizes the three layers
+(ADR 05): `wrapUntrusted` (L1, tool output framed as untrusted DATA), `gate` (L2 least
+privilege + HITL, L3 `fetch_url` egress allowlist), `filterOutput` (L3 flag DLP). At
+**Level 0 every hook is the identity**, pinned by `BaselinePristineTest` (N1) with strict
+comparison. Order is `persist -> gate -> execute` (Change 1/N4): the gate sits between
+logging the `ToolInvocation` and executing, so a blocked call is recorded (`blocked=true`
++ new `blocked_reason` column, migration `Version20260718024210`) and never conflated
+with "never attempted"; the order test now asserts `['persist','gate','execute']`. N2
+metadata: `meta.dlp_redacted` + `tool_calls[].blocked_reason`. HITL is a deterministic
+auto-policy (`LAB_CONFIRM_POLICY` deny|allow, ADR 06) since the lab is non-interactive;
+**fixed**: like `LAB_LEVEL` it is NOT declared in `.env` (the `.env` value would shadow
+the compose env in `$_ENV` — the ADR 11 bug), resolved via `default:`. N5 docs in
+`docs/DEFENSES.md`: per-layer what-it-attacks/what-it-does-not; the literal-match DLP
+being bypassable (base64/reversed/spelled) is an **expected** teaching finding, not a bug,
+contrasted with `fetch_url` logging that captures the attempt regardless of encoding. 80
+local tests, 0 failures; container number produced by CI on the closing commit.

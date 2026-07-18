@@ -73,6 +73,12 @@ runtime**, nunca en tiempo de compilacion del contenedor.
 | 2 | Minimo privilegio + human-in-the-loop |
 | 3 | Filtrado de salida (DLP) + egress allowlist |
 
+Las capas son **acumulativas** y de eficacia **parcial a proposito**: el "que ataca /
+que NO cubre" de cada una (y por que el DLP por literal es evadible por diseño) esta en
+[`docs/DEFENSES.md`](docs/DEFENSES.md). El Nivel 2 usa un human-in-the-loop simulado:
+`LAB_CONFIRM_POLICY` (`deny` por defecto | `allow`), ver
+[ADR 06](docs/adr/0006-hitl-nivel-2-auto-policy.md).
+
 Por variable de entorno:
 
 ```bash
@@ -103,12 +109,16 @@ La respuesta de `/api/chat` es **autodescriptiva**: `meta` lleva los valores
 "meta": {
   "level": 0, "model": "claude-haiku-4-5-20251001", "temperature": 1.0, "max_tokens": 1024,
   "iterations": 3, "stop_reason": "end_turn",
-  "max_iterations_reached": false, "truncated": false, "api_error": false
+  "max_iterations_reached": false, "truncated": false, "api_error": false,
+  "dlp_redacted": false
 }
 ```
 
 `tool_calls` es una **proyeccion del log durable** `ToolInvocation` (ADR 15), no una
-contabilidad paralela.
+contabilidad paralela. Cada entrada lleva `blocked` y `blocked_reason`
+(`confirmation_denied` | `egress_allowlist`): el harness distingue asi "el modelo no lo
+intento" de "lo intento y una capa concreta lo paro" (el intento queda registrado ANTES
+del gate — orden `persist -> gate -> execute`, ADR 05).
 
 **El harness DEBE descartar las mediciones no concluyentes** — no contarlas como "el
 ataque fallo". Una request es no concluyente si `max_iterations_reached`, `truncated` o
@@ -121,9 +131,11 @@ devuelve **400 Bad Request**, nunca un clamp silencioso.
 
 ## Configuracion (env)
 
-Ver `.env` (solo placeholders). Claves relevantes: `LAB_LEVEL`, `LAB_CONFIRM_POLICY`,
-`ANTHROPIC_MODEL` (default Haiku), `ANTHROPIC_TEMPERATURE` (explicita, default `1.0`),
-`ANTHROPIC_MAX_TOKENS`, `AGENT_MAX_ITERATIONS`.
+Ver `.env` (solo placeholders). Claves relevantes: `ANTHROPIC_MODEL` (default Haiku),
+`ANTHROPIC_TEMPERATURE` (explicita, default `1.0`), `ANTHROPIC_MAX_TOKENS`,
+`AGENT_MAX_ITERATIONS`. `LAB_LEVEL` y `LAB_CONFIRM_POLICY` **no** se declaran en `.env`
+a proposito (evitan ensombrecer la env del compose en `$_ENV`, ADR 11): se resuelven en
+runtime via el procesador `default:` (defaults `0` y `deny`) y los aporta el `compose`.
 
 ## Documentacion
 

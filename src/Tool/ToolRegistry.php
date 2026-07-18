@@ -29,15 +29,23 @@ final class ToolRegistry
     /**
      * Payload del campo `tools` de la API de Messages, resuelto por nivel en RUNTIME.
      *
-     * Nivel 0 (Fase 3): el set canonico completo, sin recortes. El parametro $level
-     * es el punto de extension donde la Fase 5 aplicara minimo privilegio (recortar
-     * herramientas sensibles, restringir query_db, etc.). Hoy es un no-op deliberado.
+     * Nivel 0: el set canonico completo, sin recortes (baseline pristino, N1). El
+     * recorte por nivel ocurre AQUI, en runtime (Cambio 4): a partir del Nivel 2,
+     * query_db se anuncia como solo-lectura (la ejecucion la fuerza el gate de la
+     * DefensePolicy; aqui se ajusta lo que ve el modelo).
      *
      * @return list<array{name: string, description: string, input_schema: array<string, mixed>}>
      */
     public function schemas(DefenseLevel $level): array
     {
-        return array_values($this->definitions);
+        $definitions = $this->definitions;
+
+        if ($level->value >= DefenseLevel::LeastPrivilege->value && isset($definitions['query_db'])) {
+            $definitions['query_db']['description'] =
+                'Run a READ-ONLY SQL SELECT query against the database and return the result.';
+        }
+
+        return array_values($definitions);
     }
 
     public function has(string $name): bool

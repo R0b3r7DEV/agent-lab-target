@@ -76,20 +76,57 @@ final class ToolRegistryTest extends KernelTestCase
     }
 
     /**
-     * El conjunto es agnostico del nivel: pedir los schemas a cualquier nivel
-     * devuelve el mismo set canonico (en Nivel 0; los recortes por nivel son Fase 5).
+     * El SET (nombres + input_schemas) es agnostico del nivel: el compiler pass genera
+     * el conjunto canonico completo una sola vez (Cambio 4). Lo unico que cambia por
+     * nivel es la DESCRIPCION anunciada de query_db, recortada en RUNTIME a partir del
+     * Nivel 2 (minimo privilegio: se anuncia solo-lectura). La ejecucion la fuerza el
+     * gate de la DefensePolicy; aqui solo se ajusta lo que ve el modelo.
      */
-    public function testCanonicalSetIsLevelIndependent(): void
+    public function testToolSetAndSchemasAreLevelIndependent(): void
     {
         $registry = $this->registry();
 
-        $none = $registry->schemas(DefenseLevel::None);
-        $least = $registry->schemas(DefenseLevel::LeastPrivilege);
-        $output = $registry->schemas(DefenseLevel::OutputFiltering);
+        foreach ([DefenseLevel::None, DefenseLevel::DataSeparation, DefenseLevel::LeastPrivilege, DefenseLevel::OutputFiltering] as $level) {
+            $schemas = $registry->schemas($level);
+            self::assertCount(5, $schemas, sprintf('el set debe tener 5 tools en %s', $level->name));
+            self::assertEqualsCanonicalizing(self::EXPECTED_TOOLS, array_column($schemas, 'name'), 'los nombres del set son invariantes');
+            self::assertSame(
+                $this->schemaOf($registry->schemas(DefenseLevel::None), 'query_db')['input_schema'],
+                $this->schemaOf($schemas, 'query_db')['input_schema'],
+                'el input_schema de query_db no cambia por nivel; solo la descripcion',
+            );
+        }
+    }
 
-        self::assertSame($none, $least);
-        self::assertSame($none, $output);
-        self::assertCount(5, $none);
+    /**
+     * El recorte de descripcion de query_db ocurre en RUNTIME y solo desde el Nivel 2.
+     */
+    public function testQueryDbDescriptionIsTrimmedFromLevel2(): void
+    {
+        $registry = $this->registry();
+        $canonical = 'Run a raw SQL query against the application database and return the result.';
+        $trimmed = 'Run a READ-ONLY SQL SELECT query against the database and return the result.';
+
+        self::assertSame($canonical, $this->schemaOf($registry->schemas(DefenseLevel::None), 'query_db')['description']);
+        self::assertSame($canonical, $this->schemaOf($registry->schemas(DefenseLevel::DataSeparation), 'query_db')['description']);
+        self::assertSame($trimmed, $this->schemaOf($registry->schemas(DefenseLevel::LeastPrivilege), 'query_db')['description']);
+        self::assertSame($trimmed, $this->schemaOf($registry->schemas(DefenseLevel::OutputFiltering), 'query_db')['description']);
+    }
+
+    /**
+     * @param list<array{name: string, description: string, input_schema: array<string, mixed>}> $schemas
+     *
+     * @return array{name: string, description: string, input_schema: array<string, mixed>}
+     */
+    private function schemaOf(array $schemas, string $name): array
+    {
+        foreach ($schemas as $schema) {
+            if ($name === $schema['name']) {
+                return $schema;
+            }
+        }
+
+        self::fail(sprintf('schema "%s" no encontrado', $name));
     }
 
     /**

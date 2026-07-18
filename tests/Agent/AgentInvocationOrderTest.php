@@ -8,6 +8,8 @@ use App\Agent\AgentService;
 use App\Agent\AnthropicClient;
 use App\Agent\SystemPromptFactory;
 use App\Defense\DefenseLevel;
+use App\Defense\DefensePolicy;
+use App\Defense\GateDecision;
 use App\Tests\Fake\FakeAnthropicTransport;
 use App\Tool\AgentToolInterface;
 use App\Tool\ToolRegistry;
@@ -75,10 +77,26 @@ final class AgentInvocationOrderTest extends TestCase
             '2023-06-01',
         );
 
-        $agent = new AgentService($anthropic, $registry, new SystemPromptFactory(), $em, 8);
+        // Espia de la DefensePolicy: registra que el gate se consulta (y permite).
+        $defense = new class($record) extends DefensePolicy {
+            public function __construct(private readonly \Closure $recorder)
+            {
+                parent::__construct('deny');
+            }
+
+            public function gate(string $tool, array $input, DefenseLevel $level): GateDecision
+            {
+                ($this->recorder)('gate');
+
+                return GateDecision::allow();
+            }
+        };
+
+        $agent = new AgentService($anthropic, $registry, new SystemPromptFactory(), $defense, $em, 8);
         $agent->chat('go', DefenseLevel::None);
 
-        // Hoy: persist antes de execute. Fase 5: ['persist', 'gate', 'execute'].
-        self::assertSame(['persist', 'execute'], $order);
+        // El gate va ENTRE persist y execute (N4/Bloque J): asi una llamada bloqueada
+        // queda registrada, distinguible de "nunca intentada".
+        self::assertSame(['persist', 'gate', 'execute'], $order);
     }
 }

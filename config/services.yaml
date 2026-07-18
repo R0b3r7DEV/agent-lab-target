@@ -8,6 +8,11 @@ parameters:
     # resuelve con `default:` -> este parametro cuando falta, o getenv() cuando existe.
     lab_level_default: '0'
 
+    # Politica de confirmacion del HITL del Nivel 2 (ADR 06). Mismo motivo que
+    # LAB_LEVEL: NO se declara en .env (si no, el 'deny' del .env ensombreceria en
+    # $_ENV un LAB_CONFIRM_POLICY=allow del compose). Default seguro: 'deny'.
+    lab_confirm_policy_default: 'deny'
+
 services:
     _defaults:
         autowire: true
@@ -18,6 +23,8 @@ services:
             # "fallo fuerte" del nivel invalido (ver LabLevelResolver / Tarea D).
             # `default:` -> si LAB_LEVEL no esta en el entorno, usa lab_level_default.
             string $envLevel: '%env(default:lab_level_default:LAB_LEVEL)%'
+            # Mismo patron para la politica de confirmacion (ADR 06/11).
+            string $confirmPolicy: '%env(default:lab_confirm_policy_default:LAB_CONFIRM_POLICY)%'
 
     # Toda herramienta del agente se autoconfigura con el tag que descubre el
     # compiler pass (AgentToolPass).

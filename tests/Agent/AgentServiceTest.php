@@ -8,6 +8,7 @@ use App\Agent\AgentService;
 use App\Agent\AnthropicClient;
 use App\Agent\SystemPromptFactory;
 use App\Defense\DefenseLevel;
+use App\Defense\DefensePolicy;
 use App\Tests\Fake\FakeAnthropicTransport;
 use App\Tool\ToolRegistry;
 use Doctrine\ORM\EntityManagerInterface;
@@ -44,6 +45,7 @@ final class AgentServiceTest extends KernelTestCase
             $anthropic,
             $container->get(ToolRegistry::class),
             $container->get(SystemPromptFactory::class),
+            new DefensePolicy('deny'),
             $container->get(EntityManagerInterface::class),
             $maxIterations,
         );

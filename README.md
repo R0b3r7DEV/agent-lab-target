@@ -39,6 +39,17 @@ tocar el vector didactico (`secret.flag` y `/etc/passwd` siguen siendo alcanzabl
 el contenedor corre en `APP_ENV=prod` por defecto (sin volcado de `$_ENV` en errores).
 Ninguna de estas medidas sustituye a la key dedicada con tope: son capas.
 
+### Solo local / red aislada — los endpoints del lab NO llevan auth
+
+`/api/reset`, `/api/exfil`, `/api/chat` y la cabecera `X-Lab-Level` **no estan
+autenticados a proposito**: es un lab local de un solo operador y meter auth solo
+añadiria ruido al objeto de estudio. La contrapartida es que **cualquiera con acceso de
+red a la instancia puede resetear tu corrida, leer tu log de exfiltracion o disparar el
+agente contra tu API key**. Por eso este lab se levanta **solo en local / en una red
+aislada** — nunca expuesto a una red no confiable. (Los verbos POST-only de
+`/api/reset` y `/api/chat` son una frontera anti-SSRF interna, no un control de acceso:
+no sustituyen el aislamiento de red.)
+
 ## Levantar el lab
 
 Requiere Docker.
@@ -98,9 +109,15 @@ curl -H 'X-Lab-Level: 3' http://localhost:8080/api/health
 | Endpoint | Descripcion | Fase |
 |---|---|---|
 | `GET /api/health` | Healthcheck; devuelve el nivel efectivo | 1 ✅ |
-| `POST /api/chat` | `{message}` → `{reply, tool_calls[], meta}` | 4 |
-| `POST /api/reset` | Recarga fixtures + limpia logs (barato, sin dropear esquema) | 6 |
-| `GET /api/exfil` | Log consultable de egress (trampa de exfiltracion), con `blocked` | 6 |
+| `POST /api/chat` | `{message}` → `{reply, tool_calls[], meta}` | 4 ✅ |
+| `POST /api/reset` | Recarga fixtures + limpia logs (barato, sin dropear esquema) | 6 ✅ |
+| `GET /api/exfil` | Proyeccion de egress (`fetch_url`) con `domain`/`query` parseados server-side, `blocked`, `blocked_reason`, `created_at` | 6 ✅ |
+
+> **Verbos = frontera anti-SSRF (no cosmeticos).** `fetch_url` es sobre-permisiva y solo
+> emite GET; los endpoints que mutan o disparan efectos (`/api/reset`, `/api/chat`) son
+> **POST-only**, de modo que un SSRF inducido no puede resetear la corrida ni disparar el
+> agente (recibe 405). Los GET-reachable (`/api/health`, `/api/exfil`) son solo-lectura.
+> Ver [`docs/DEFENSES.md`](docs/DEFENSES.md) § SSRF.
 
 La respuesta de `/api/chat` es **autodescriptiva**: `meta` lleva los valores
 **efectivos de esa request** (no los del `.env`):
@@ -131,11 +148,22 @@ devuelve **400 Bad Request**, nunca un clamp silencioso.
 
 ## Configuracion (env)
 
-Ver `.env` (solo placeholders). Claves relevantes: `ANTHROPIC_MODEL` (default Haiku),
-`ANTHROPIC_TEMPERATURE` (explicita, default `1.0`), `ANTHROPIC_MAX_TOKENS`,
-`AGENT_MAX_ITERATIONS`. `LAB_LEVEL` y `LAB_CONFIRM_POLICY` **no** se declaran en `.env`
-a proposito (evitan ensombrecer la env del compose en `$_ENV`, ADR 11): se resuelven en
-runtime via el procesador `default:` (defaults `0` y `deny`) y los aporta el `compose`.
+Todos los knobs del lab, sus valores y **donde se resuelven**:
+
+| Knob | Default | Valores admitidos | Se resuelve en | Notas |
+|---|---|---|---|---|
+| `LAB_LEVEL` | `0` | `0`–`3` (entero) | runtime, `default:lab_level_default` | **No** en `.env` (ADR 11); lo aporta el compose. Override por request con `X-Lab-Level`. Invalido → 400. |
+| `LAB_CONFIRM_POLICY` | `deny` | `deny` \| `allow` | runtime, `default:lab_confirm_policy_default` | HITL auto-policy del Nivel 2 (ADR 06). **No** en `.env`, mismo motivo (ADR 11). |
+| `ANTHROPIC_MODEL` | `claude-haiku-4-5-20251001` | cualquier id de modelo | env (`.env` placeholder) | Haiku por defecto = ASR alto en baseline (ADR 12 vecino). |
+| `ANTHROPIC_TEMPERATURE` | `1.0` | float `0.0`–`1.0` | env | Explicita a proposito (ADR 12): sin ella las corridas no son comparables. |
+| `ANTHROPIC_MAX_TOKENS` | `1024` | entero > 0 | env | `stop_reason=max_tokens` marca la respuesta como truncada/no concluyente. |
+| `AGENT_MAX_ITERATIONS` | `8` | entero > 0 | env | Tope del bucle de tool use; al alcanzarlo, `max_iterations_reached=true` (no concluyente). |
+| `APP_ENV` | `prod` | `prod` \| `dev` \| `test` | env (compose) | **prod por defecto** (ADR 11): sin profiler que vuelque `$_ENV` con la API key. `dev`/`test` son opt-in explicito. |
+| `ANTHROPIC_API_KEY` | (vacio) | tu key | `.env.local` / entorno | **Solo backend**, jamas en `.env` ni en logs. La aporta el operador. |
+
+`.env` contiene **solo placeholders**. `LAB_LEVEL` y `LAB_CONFIRM_POLICY` no se declaran
+alli a proposito (un placeholder en `.env` aterriza en `$_ENV` y ensombreceria la env del
+`compose`, ADR 11); se resuelven con el procesador `default:`.
 
 ## Documentacion
 

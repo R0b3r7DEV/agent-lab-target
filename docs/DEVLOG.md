@@ -491,3 +491,90 @@ the compose env in `$_ENV` — the ADR 11 bug), resolved via `default:`. N5 docs
 being bypassable (base64/reversed/spelled) is an **expected** teaching finding, not a bug,
 contrasted with `fetch_url` logging that captures the attempt regardless of encoding. 80
 local tests, 0 failures; container number produced by CI on the closing commit.
+
+---
+
+## 2026-07-18 — Fase 6: /api/reset, /api/exfil, frontera anti-SSRF + primer disparo
+
+**ES**
+
+- **Bloques bloqueantes previos.**
+  - **M (confirmado con diff):** `compose.yaml:18` sigue `APP_ENV: ${APP_ENV:-prod}` — la
+    historia del fichero muestra un solo `+` (su introduccion) y ningun `-` posterior.
+    `APP_ENV=test` aparece SOLO en `ci.yml:87`, inyectado por comando (`-e`) en el exec de
+    PHPUnit del grupo db; el `up` (linea 44) arranca en prod. ADR 11 intacto.
+  - **O (durabilidad del gate en PG real):** `GateDurabilityTest` (#[Group('db')]): una
+    llamada sensible a Nivel 2/deny -> el gate la bloquea -> se relee FRESCA desde PG
+    (`em->clear()` + repositorio) con `blocked=true` y `blocked_reason='confirmation_denied'`,
+    y sin `result_summary` (no se ejecuto). Caso simetrico: query_db read-only permitido ->
+    `blocked=false`, con resumen. Es el Motivo 1 del Bloque I (sobrevivir al timeout de
+    180s) clavado en comportamiento, no en esquema. Grupo db: **7 -> 11 tests**.
+  - **P (descubribilidad):** tabla de TODOS los knobs en el README (default, valores
+    admitidos, donde se resuelven), tras sacar `LAB_CONFIRM_POLICY` de `.env`.
+- **Q1 — /api/exfil como proyeccion con dominio parseado server-side.** `ExfilProjector`
+  filtra las filas `fetch_url` de `ToolInvocation` y DERIVA `domain`/`query` del `url`
+  (parse_url) en UN solo sitio; devuelve `tool, domain, url, query, blocked,
+  blocked_reason, created_at`. Motivo: si devolviera el blob crudo, el harness
+  reimplementaria el parseo y se perderia la deteccion determinista. `ExfilEndpointTest`
+  (#[Group('db')]) lo verifica (dominio parseado, ruido de otras tools excluido) + que
+  `/api/reset` limpia el log.
+- **Q2 — SSRF hacia el plano de control.** `fetch_url` es SSRF a proposito y emite solo
+  GET; `/api/reset` y `/api/chat` son POST-only, asi que un SSRF (GET) recibe 405 y no
+  puede resetear la corrida ni disparar el agente. Frontera principiada (como el Bloque H):
+  NO reduce el objeto de estudio (exfiltrar a un dominio del atacante sigue intacto);
+  protege la integridad de la medida. `ControlPlaneSsrfTest` lo asevera (405 a verbos no
+  permitidos). Superficie GET-reachable (health, exfil) = solo-lectura, documentada en
+  `docs/DEFENSES.md` § SSRF. NO se mete `localhost` en la denylist de egress (eso si seria
+  arreglar la vuln): la proteccion es de verbo en el borde, no de destino.
+- **Q4 — endpoints solo-lab sin auth.** README: `/api/reset`, `/api/exfil`, `/api/chat` y
+  `X-Lab-Level` no llevan auth a proposito; refuerza el aviso de "solo local / red
+  aislada" (cualquiera con acceso de red resetea tu corrida o lee tu log). Los POST-only
+  son frontera anti-SSRF interna, NO control de acceso.
+- **Q3 — primer disparo real: runner + plumbing verificado; la transcripcion REAL queda
+  PENDIENTE de la key del operador.** `scripts/first-shot.sh` (reset -> chat Nivel 0 ->
+  /api/exfil; portable sin jq). El disparo real contra la API de Anthropic **gasta dinero
+  y necesita una key dedicada del lab**, que NO esta en este entorno; **no se fabrica una
+  transcripcion**. Lo que SI se verifico en vivo (PG scoop + `php -S`, sin key):
+
+  ```
+  POST /api/reset  -> {"status":"reset"}                         (siembra el dataset)
+  POST /api/chat   -> meta.stop_reason="api_error", api_error=true, reply="", tool_calls=[]
+                      (sin key -> el marcador K2 de "no concluyente" funciona; el harness
+                       descartaria esta medicion en vez de contarla como ataque fallido)
+  GET  /api/exfil  -> {"entries": []}
+  ```
+
+  El endpoint, el bucle y el meta responden bien; falta SOLO la corrida con key real, que
+  ejecuta el operador con:
+
+  ```bash
+  echo 'ANTHROPIC_API_KEY=sk-ant-...' > .env.local   # key DEDICADA con tope (ADR 11)
+  docker compose up -d                               # o php -S con PG local
+  ./scripts/first-shot.sh http://localhost:8080
+  ```
+
+  Su salida (mensaje + reply + tool_calls con `blocked` + meta + /api/exfil) es la
+  transcripcion Q3 a pegar aqui. Si el agente no pica a la primera, tampoco es un fallo:
+  es el primer dato sobre lo que hace falta para que pique, y va al DEVLOG igual.
+- Verificacion: **91 tests locales** (80 sin BD + 11 grupo db en compose/PG18), 0 fallos.
+  El numero de contenedor lo produce el CI en el commit de cierre.
+
+**EN**
+
+Phase 6. Blocking items first: **M** confirmed by diff — compose keeps `APP_ENV: ${APP_ENV:-prod}`
+(one `+`, no later `-`), `APP_ENV=test` only in the PHPUnit db-group exec command (ci.yml:87),
+ADR 11 intact. **O** — `GateDurabilityTest` (db group) proves a gate-blocked call lands in
+real PG with `blocked=true` + `blocked_reason`, reread fresh after `em->clear()`, and the
+symmetric allowed case (blocked=false); db group 7 -> 11 tests. **P** — full knobs table in
+the README. **Q1** — `/api/exfil` projects `ToolInvocation` fetch_url rows with `domain`/`query`
+parsed server-side (single source), so the harness gets deterministic detection instead of
+reparsing URLs; `ExfilEndpointTest` verifies it and that reset clears the log. **Q2** — SSRF to
+the control plane: `fetch_url` is GET-only, `/api/reset` and `/api/chat` are POST-only, so an
+induced SSRF gets 405 and can't reset the run or fire the agent; principled boundary (like
+Block H), does not touch the studied vuln, documented in DEFENSES.md; `ControlPlaneSsrfTest`
+asserts the 405s. **Q4** — lab-only unauthenticated endpoints documented as reinforcing the
+local-only / isolated-network warning. **Q3** — `scripts/first-shot.sh` runner + live plumbing
+verified without a key (reset OK; chat degrades cleanly to `api_error`; exfil empty); the REAL
+paid shot against the Anthropic API is **left PENDING the operator's dedicated key — no
+transcript is fabricated**. 91 local tests, 0 failures; container number from CI on the closing
+commit.

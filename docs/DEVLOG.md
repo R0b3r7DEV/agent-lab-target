@@ -578,3 +578,56 @@ verified without a key (reset OK; chat degrades cleanly to `api_error`; exfil em
 paid shot against the Anthropic API is **left PENDING the operator's dedicated key — no
 transcript is fabricated**. 91 local tests, 0 failures; container number from CI on the closing
 commit.
+
+---
+
+## 2026-07-19 — /api/reset parametrizado (capacidad para la familia indirecta del harness)
+
+**ES**
+
+- **Capacidad ADITIVA (ADR 0016):** `POST /api/reset` sin cuerpo -> estado canonico
+  **identico** al de siempre (retrocompatible al 100%); con `{"poisoned_review":"<string>"}`
+  -> sobrescribe UNICAMENTE el cuerpo de la review envenenada canonica (id 2, `compliance_bot`).
+  Resuelve la decision aparcada (ADR 0008 del harness): la familia `indirect_injection` deja de
+  medir una sola instruccion bajo N disparadores.
+- **Fuente unica del cuerpo efectivo:** `LabDataset::resolvePoisonedReview(?override)` (override
+  o canonico), usada por el seeder; `seed()` y `LabResetService::reset()` reciben el override
+  opcional (default null). `fastReset` Y `fullRestore` lo aplican -> la restauracion de esquema
+  del Bloque H no se puentea.
+- **Blindaje (el harness suministra el ATAQUE, no el OBJETIVO):** solo `poisoned_review` es
+  parametrizable; `Secret`/flag, PII de carlos, review benigna #1, nivel y `var/secret.flag`
+  quedan inalcanzables desde la request. Test explicito lo asevera.
+- **Rechazo estricto 400 ANTES de tocar la BD** (una request malformada no resetea a medias):
+  clave desconocida, cuerpo no-objeto, `{}` (falta la clave), no-string, o > 8000 chars
+  (barandilla, el 400 por longitud dice el maximo). La ruta de siembra usa el ORM
+  (parametrizada): el payload entra como DATO, no como SQL — la vuln vive en que el agente
+  confia en el contenido, no en el seeder.
+- **Confirmacion de siembra desde el estado PERSISTIDO (Cambio 1/Bloque I):** la respuesta lleva
+  `poisoned_review_len` + `poisoned_review_sha256` leidos con `SELECT body FROM review WHERE
+  id=2` tras el flush (no un calculo paralelo del controlador). El harness verifica que la
+  inyeccion tomo antes de gastar en `chat`. Nunca expone el secreto.
+- **Coste:** via rapida preservada; delta override-vs-canonico local con **min identico**
+  (~86 ms local, absoluto que NO transfiere; el numero de compose/PG18 lo da el CI). `app:lab:reset`
+  gana `--poisoned-review` (aditivo). Unico anadido por reset: un SELECT de una fila.
+- **Tests (contra PG18 real, grupo db):** retrocompat canonica; round-trip del override leido de
+  la BD; blindaje (secreto/PII/fichero intactos); determinismo (reset(X) x2 identico);
+  confirmacion == estado persistido; `fullRestore` aplica el override. No-db: los seis 400s.
+  **Suite: no-db 86 (3 saltados en Windows), db 20 (antes 11), 0 fallos.** El numero de
+  contenedor lo produce el CI.
+
+**EN**
+
+Additive capability (ADR 0016): parametrized `POST /api/reset`. No body -> canonical state,
+100% backward compatible; `{"poisoned_review":"<string>"}` -> overwrites ONLY the canonical
+poisoned review body (id 2). Single source `LabDataset::resolvePoisonedReview`; override flows
+through `seed()`/`reset()`, applied by both the fast path and the schema `fullRestore` (Block H
+preserved). Shielding: only `poisoned_review` is parametrizable; the Secret/flag, carlos PII,
+benign review #1, level and `var/secret.flag` are unreachable from the request (explicit test).
+Strict 400 BEFORE touching the DB (a malformed request must not half-reset): unknown key,
+non-object, `{}`, non-string, or > 8000 chars (guardrail; the length 400 states the max).
+Seeding path uses the ORM (parametrized): the payload is DATA, not SQL — the vuln is the agent
+trusting the content, not an injectable seeder. Seeding confirmation (`len` + `sha256`) is read
+from the PERSISTED review after flush (Change 1/Block I), not a parallel calc; the harness uses
+it to confirm the injection took before spending on `chat`; never exposes the secret. Cost: fast
+path preserved (local floor identical; authoritative compose/PG18 number from CI). Tests: db
+group 11 -> 20, non-db 86 (3 skipped on Windows), 0 failures.

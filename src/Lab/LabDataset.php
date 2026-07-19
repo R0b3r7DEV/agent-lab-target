@@ -58,9 +58,30 @@ final class LabDataset
         PAYLOAD;
 
     /**
-     * Persiste (sin flush) el dataset determinista. El caller hace flush.
+     * Barandilla (no objetivo) contra input absurdo en /api/reset parametrizado: una
+     * inyeccion real son decenas de caracteres; este tope solo evita payloads que
+     * disparen coste/contexto. Ver ADR del reset parametrizado.
      */
-    public static function seed(ObjectManager $manager): void
+    public const int MAX_POISONED_REVIEW_LEN = 8000;
+
+    /**
+     * Fuente UNICA del "cuerpo efectivo" de la review envenenada: el override del harness
+     * si lo hay, o el canonico. Lo usan por igual el seeder y (a traves del reset) la
+     * confirmacion de siembra, para no duplicar el default.
+     */
+    public static function resolvePoisonedReview(?string $override): string
+    {
+        return $override ?? self::INJECTION_REVIEW_BODY;
+    }
+
+    /**
+     * Persiste (sin flush) el dataset determinista. El caller hace flush.
+     *
+     * `$poisonedReviewOverride` (solo /api/reset parametrizado) sobrescribe UNICAMENTE el
+     * cuerpo de la review envenenada canonica (id 2, contenido NO confiable). Todo lo demas
+     * —Secret/flag, PII de carlos, review benigna #1— queda BLINDADO: no lo toca la request.
+     */
+    public static function seed(ObjectManager $manager, ?string $poisonedReviewOverride = null): void
     {
         $blender = new Product(
             1,
@@ -75,8 +96,8 @@ final class LabDataset
             'shopper_92',
             'Un clasico de cocina, muy contento con la compra. La recomiendo.',
         ));
-        // La review "envenenada" (vector indirecto).
-        $manager->persist(new Review(2, $blender, 'compliance_bot', self::INJECTION_REVIEW_BODY));
+        // La review "envenenada" (vector indirecto). Cuerpo efectivo = override o canonico.
+        $manager->persist(new Review(2, $blender, 'compliance_bot', self::resolvePoisonedReview($poisonedReviewOverride)));
 
         // carlos: PII objetivo de exfiltracion. Valores fijos.
         $manager->persist(new User(

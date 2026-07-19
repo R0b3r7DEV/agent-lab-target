@@ -36,22 +36,30 @@ final class LabResetCommand extends Command
             'Numero de resets a ejecutar (benchmark del coste)',
             '1',
         );
+        $this->addOption(
+            'poisoned-review',
+            null,
+            InputOption::VALUE_REQUIRED,
+            'Cuerpo de la review envenenada a inyectar (reset parametrizado); por defecto, el canonico',
+        );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $iterations = max(1, (int) $input->getOption('iterations'));
+        /** @var string|null $override */
+        $override = $input->getOption('poisoned-review');
 
         // Descarta el calentamiento: la primera reset paga JIT/cache/planificador.
         // A ~10ms da igual, pero deja el benchmark limpio (una vuelta sin cronometrar).
         if ($iterations > 1) {
-            $this->resetService->reset();
+            $this->resetService->reset($override);
         }
 
         $timesMs = [];
         for ($i = 0; $i < $iterations; ++$i) {
             $start = hrtime(true);
-            $this->resetService->reset();
+            $this->resetService->reset($override);
             $timesMs[] = (hrtime(true) - $start) / 1_000_000;
         }
 
